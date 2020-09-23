@@ -1,39 +1,9 @@
-/* aes_encrypt.c - TinyCrypt implementation of AES encryption procedure */
-
-/*
- *  Copyright (C) 2017 by Intel Corporation, All Rights Reserved.
- *
- *  Redistribution and use in source and binary forms, with or without
- *  modification, are permitted provided that the following conditions are met:
- *
- *    - Redistributions of source code must retain the above copyright notice,
- *     this list of conditions and the following disclaimer.
- *
- *    - Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in the
- *    documentation and/or other materials provided with the distribution.
- *
- *    - Neither the name of Intel Corporation nor the names of its contributors
- *    may be used to endorse or promote products derived from this software
- *    without specific prior written permission.
- *
- *  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- *  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- *  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- *  ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
- *  LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- *  CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- *  SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- *  INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- *  CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- *  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- *  POSSIBILITY OF SUCH DAMAGE.
- */
-
 #include <tinycrypt/aes.h>
 #include <tinycrypt/utils.h>
 #include <tinycrypt/constants.h>
 
+
+//s-box table?근데 왜 256비트지?
 static const uint8_t sbox[256] = {
 	0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b,
 	0xfe, 0xd7, 0xab, 0x76, 0xca, 0x82, 0xc9, 0x7d, 0xfa, 0x59, 0x47, 0xf0,
@@ -67,6 +37,7 @@ static inline unsigned int rotword(unsigned int a)
 #define subbyte(a, o)(sbox[((a) >> (o))&0xff] << (o))
 #define subword(a)(subbyte(a, 24)|subbyte(a, 16)|subbyte(a, 8)|subbyte(a, 0))
 
+//Key
 int tc_aes128_set_encrypt_key(TCAesKeySched_t s, const uint8_t *k)
 {
 	const unsigned int rconst[11] = {
@@ -98,6 +69,7 @@ int tc_aes128_set_encrypt_key(TCAesKeySched_t s, const uint8_t *k)
 	return TC_CRYPTO_SUCCESS;
 }
 
+//add_round key 함수....각 state열에 key를 XOR연산해준다
 static inline void add_round_key(uint8_t *s, const unsigned int *k)
 {
 	s[0] ^= (uint8_t)(k[0] >> 24); s[1] ^= (uint8_t)(k[0] >> 16);
@@ -110,6 +82,7 @@ static inline void add_round_key(uint8_t *s, const unsigned int *k)
 	s[14] ^= (uint8_t)(k[3] >> 8); s[15] ^= (uint8_t)(k[3]);
 }
 
+//sub_bytes 함수...substitution 즉 대치를 해준다
 static inline void sub_bytes(uint8_t *s)
 {
 	unsigned int i;
@@ -129,6 +102,7 @@ static inline void mult_row_column(uint8_t *out, const uint8_t *in)
 	out[3] = triple(in[0]) ^ in[1] ^ in[2] ^ _double_byte(in[3]);
 }
 
+//mixcolumns.....열을 행렬과 곱하여 새로운 열을 반환한다
 static inline void mix_columns(uint8_t *s)
 {
 	uint8_t t[Nb*Nk];
@@ -144,6 +118,12 @@ static inline void mix_columns(uint8_t *s)
  * This shift_rows also implements the matrix flip required for mix_columns, but
  * performs it here to reduce the number of memory operations.
  */
+
+//ShiftRows....permutation 치환.
+//row 0은 shift x
+//row 1은 1byte
+//row 2는 2byte
+//row 3은 3byte left shift
 static inline void shift_rows(uint8_t *s)
 {
 	uint8_t t[Nb * Nk];
@@ -155,6 +135,7 @@ static inline void shift_rows(uint8_t *s)
 	(void) _copy(s, sizeof(t), t, sizeof(t));
 }
 
+//암호화
 int tc_aes_encrypt(uint8_t *out, const uint8_t *in, const TCAesKeySched_t s)
 {
 	uint8_t state[Nk*Nb];
@@ -171,7 +152,7 @@ int tc_aes_encrypt(uint8_t *out, const uint8_t *in, const TCAesKeySched_t s)
 	(void)_copy(state, sizeof(state), in, sizeof(state));
 	add_round_key(state, s->words);
 
-	for (i = 0; i < (Nr - 1); ++i) {
+	for (i = 0; i < (Nr - 1); ++i) { //Nr-1인 이유는, 마지막 라운드에서는 믹스를 하지 않기 때문에 그 전까지만 mix_columns함수가 있다
 		sub_bytes(state);
 		shift_rows(state);
 		mix_columns(state);
@@ -180,7 +161,7 @@ int tc_aes_encrypt(uint8_t *out, const uint8_t *in, const TCAesKeySched_t s)
 
 	sub_bytes(state);
 	shift_rows(state);
-	add_round_key(state, s->words + Nb*(i+1));
+	add_round_key(state, s->words + Nb*(i+1)); //마지막 round에는 mix를 하지 않는다
 
 	(void)_copy(out, sizeof(state), state, sizeof(state));
 
